@@ -6,6 +6,7 @@ import discord
 from discord import app_commands
 
 from bot import channel_setup
+from bot import deploy_info
 from state.store import StateStore
 
 
@@ -90,7 +91,16 @@ class MonitorBot(discord.Client):
                     ephemeral=True,
                 )
                 return
-            await interaction.followup.send("Test alert sent.", ephemeral=True)
+            short = deploy_info.get_commit_short() or "?"
+            branch = deploy_info.get_branch() or "?"
+            env_label = "Render" if deploy_info.is_render_runtime() else "local"
+            started = deploy_info.PROCESS_STARTED_AT.strftime("%Y-%m-%d %H:%M UTC")
+            await interaction.followup.send(
+                f"Test alert sent.\n"
+                f"**This process:** `{short}` · {branch} · {env_label} · started {started}\n"
+                f"_Match this commit to GitHub after deploy; if deploy is still running, wait and re-run._",
+                ephemeral=True,
+            )
 
         @self.tree.command(
             name="setupchannels",
@@ -235,5 +245,10 @@ class MonitorBot(discord.Client):
             source_name="Test Source",
             event_id="0xabc123def4567890abc123def4567890abc123def4567890abc123def4567890",
             occurred_at=datetime.now(timezone.utc),
+        )
+        embed.add_field(
+            name="Build / deploy",
+            value=deploy_info.format_testalert_build_text(),
+            inline=False,
         )
         await self.send_alert(embed)
