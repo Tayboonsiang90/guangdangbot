@@ -7,15 +7,32 @@ from discord import app_commands
 
 from bot import channel_setup
 from bot import deploy_info
+from config import Settings
 from state.store import StateStore
 from workers.aaa_national_gas import (
     AAA_NATIONAL_GAS_WORKER_ID,
+    apply_aaa_snapshot,
+    fetch_aaa_page_html,
     load_worker_state_dict,
     merge_poll_interval_into_stored_state,
+    page_url_from_settings,
+    parse_aaa_national_snapshot,
 )
 
 
 LOGGER = logging.getLogger(__name__)
+
+_DISCORD_MSG_CAP = 1800
+
+
+def _cap_discord_text(text: str, max_len: int = _DISCORD_MSG_CAP) -> str:
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 24].rstrip() + "\n… _truncated_"
+
+
+def _format_diag_lines(lines: list[str]) -> str:
+    return "\n".join(lines) if lines else "(no lines)"
 
 
 class MonitorBot(discord.Client):
@@ -27,6 +44,7 @@ class MonitorBot(discord.Client):
         monitor_guild_id: int,
         monitor_category_id: int | None,
         registered_worker_ids: list[str],
+        settings: Settings,
         test_guild_id: int | None = None,
         bot_owner_user_id: int | None = None,
     ) -> None:
@@ -40,6 +58,7 @@ class MonitorBot(discord.Client):
         self.monitor_guild_id = monitor_guild_id
         self.monitor_category_id = monitor_category_id
         self._registered_worker_ids = registered_worker_ids
+        self._settings = settings
         self.test_guild_id = test_guild_id
         self.bot_owner_user_id = bot_owner_user_id
 
@@ -218,6 +237,116 @@ class MonitorBot(discord.Client):
                 f"{poll_line}\n"
                 f"_From the last successful scrape in this bot, not a live page fetch._",
             )
+
+        @self.tree.command(
+            name="aaagasrefresh",
+            description="Live-fetch AAA national gas page, update SQLite, show diagnostics (Manage Server)",
+        )
+        async def aaagasrefresh(interaction: discord.Interaction) -> None:
+            if interaction.guild is None:
+                await interaction.response.send_message(
+                    "Run this command inside the monitor server.",
+                    ephemeral=True,
+                )
+                return
+            if not await self._can_manage_monitor_setup(interaction):
+                await interaction.response.send_message(
+                    "You do not have permission to run this command.",
+                    ephemeral=True,
+                )
+                return
+
+            await interaction.response.defer(ephemeral=True, thinking=True)
+
+            start_url = page_url_from_settings(self._settings)
+            try:
+                await interaction.edit_original_response(
+                    content=_cap_discord_text(
+                        "**AAA live fetch**\n"
+                        "Connecting…\n"
+                        f"`{start_url}`"
+                    )
+                )
+
+                html, fetch_diags = await fetch_aaa_page_html(self._settings)
+                await interaction.edit_original_response(
+                    content=_cap_discord_text(
+                        "**AAA live fetch — HTTP complete**\n"
+                        + _format_diag_lines(fetch_diags)
+                    )
+                )
+
+                if html is None:
+                    await interaction.edit_original_response(
+                        content=_cap_discord_text(
+                            "**AAA live fetch failed**\n"
+                            "No HTML returned after retries.\n\n"
+                            + _format_diag_lines(fetch_diags)
+                        )
+                    )
+                    return
+
+                await interaction.edit_original_response(
+                    content=_cap_discord_text(
+                        "**AAA live fetch — parsing**\n"
+                        f"HTML length: **{len(html)}** characters\n"
+                        "Extracting national average and as-of date…"
+                    )
+                )
+
+                parsed = parse_aaa_national_snapshot(html)
+                if parsed is None:
+                    await interaction.edit_original_response(
+                        content=_cap_discord_text(
+                            "**AAA live fetch — parse failed**\n"
+                            "The page loaded, but selectors did not find a national average "
+                            "and date (layout may have changed).\n\n"
+                            + _format_diag_lines(fetch_diags)
+                        )
+                    )
+                    return
+
+                price, as_of = parsed
+
+                async def notify_fn(payload: dict[str, Any]) -> None:
+                    await self.send_worker_notification(AAA_NATIONAL_GAS_WORKER_ID, payload)
+
+                result = await apply_aaa_snapshot(
+                    self._store,
+                    notify_fn,
+                    settings=self._settings,
+                    price=price,
+                    as_of=as_of,
+                )
+                outcome = str(result.get("outcome", "?"))
+                alert_sent = bool(result.get("alert_sent"))
+
+                diag_tail = fetch_diags[-8:] if len(fetch_diags) > 8 else fetch_diags
+                final = (
+                    "**AAA live fetch — done**\n"
+                    f"**National average:** `${price}`\n"
+                    f"**Price as of:** {as_of}\n"
+                    f"**SQLite outcome:** `{outcome}` "
+                    "(baseline = first store only; unchanged = same as DB; changed = updated)\n"
+                    f"**Monitor channel alert sent:** **{'yes' if alert_sent else 'no'}**\n"
+                    "\n**Fetch diagnostics:**\n"
+                    + _format_diag_lines(diag_tail)
+                )
+                await interaction.edit_original_response(content=_cap_discord_text(final))
+            except discord.HTTPException:
+                LOGGER.exception("aaagasrefresh Discord HTTP error")
+                raise
+            except Exception as exc:
+                LOGGER.exception("aaagasrefresh failed")
+                try:
+                    await interaction.edit_original_response(
+                        content=_cap_discord_text(f"**AAA live fetch error:** `{exc}`")
+                    )
+                except discord.HTTPException:
+                    await interaction.followup.send(
+                        f"Could not update message: {exc}",
+                        ephemeral=True,
+                    )
 
     async def _can_manage_monitor_setup(self, interaction: discord.Interaction) -> bool:
         if self.bot_owner_user_id and interaction.user.id == self.bot_owner_user_id:

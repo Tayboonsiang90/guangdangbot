@@ -25,6 +25,7 @@ async def async_main() -> None:
         monitor_guild_id=settings.monitor_guild_id,
         monitor_category_id=settings.monitor_category_id,
         registered_worker_ids=list(WORKER_IDS),
+        settings=settings,
         test_guild_id=settings.test_guild_id,
         bot_owner_user_id=settings.bot_owner_user_id,
     )

@@ -37,7 +37,7 @@ Host the bot on [Render](https://render.com) as a **Background Worker** (long-ru
    | `STATE_DB_PATH` | SQLite path (e.g. `/data/state.db` on a Render persistent disk) | No |
    | `MONITOR_CATEGORY_ID` | Optional: category ID under which to create worker channels | No |
    | `TEST_GUILD_ID` | Optional: server ID for fast slash-command sync | No |
-   | `BOT_OWNER_USER_ID` | Optional: restrict `/testalert`; co-owns `/setupchannels` and `/aaagaspoll` with Manage Server | No |
+   | `BOT_OWNER_USER_ID` | Optional: restrict `/testalert`; co-owns `/setupchannels`, `/aaagaspoll`, and `/aaagasrefresh` with Manage Server | No |
    | `AAA_GAS_POLL_INTERVAL_SECONDS` | Optional: default poll interval for the AAA national gas worker (seconds; clamped 60–86400; default 300) | No |
    | `AAA_GAS_PAGE_URL` | Optional: URL scraped for national average (default `https://gasprices.aaa.com/`) | No |
    | `AAA_GAS_HTTP_USER_AGENT` | Optional: override HTTP User-Agent for that worker | No |
@@ -66,6 +66,7 @@ Attach a **persistent disk** to the worker and set `STATE_DB_PATH` to a file on 
 4. Run **`/testalert`** — embed should appear in `ALERT_CHANNEL_ID`. The embed and ephemeral reply include **git commit** (from `RENDER_GIT_COMMIT` on Render), **branch**, and **process start time** so you can confirm the running instance matches GitHub after deploy. Optional: set **`GITHUB_REPO=owner/repo`** for a “View commit on GitHub” link.
 5. Optional: **`/aaagaspoll`** (Manage Server or `BOT_OWNER_USER_ID`) sets the **AAA national gas** poll interval in SQLite (minutes); it applies after the current sleep cycle.
 6. **`/aaagas`** — shows the last **stored** national average price and as-of date from SQLite (same values the worker last saved; not a live HTTP fetch from Discord).
+7. **`/aaagasrefresh`** (Manage Server or `BOT_OWNER_USER_ID`) — **live** HTTP fetch to the configured AAA URL, step-by-step ephemeral status (URL, attempts, HTTP result, parse), then SQLite update. If the snapshot **changes** vs the database, sends the same **monitor channel embed** as the background worker; **first baseline** still stores only (no embed). Useful for debugging 403/parse issues without waiting for the scheduler.
 
 ## Updating the bot
 
