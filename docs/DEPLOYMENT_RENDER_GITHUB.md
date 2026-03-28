@@ -41,6 +41,7 @@ Host the bot on [Render](https://render.com) as a **Background Worker** (long-ru
    | `AAA_GAS_POLL_INTERVAL_SECONDS` | Optional: default poll interval for the AAA national gas worker (seconds; clamped 60–86400; default 300) | No |
    | `AAA_GAS_PAGE_URL` | Optional: URL scraped for national average (default `https://gasprices.aaa.com/`) | No |
    | `AAA_GAS_HTTP_USER_AGENT` | Optional: override HTTP User-Agent for that worker | No |
+   | `AAA_GAS_TABLE_GRADE` | Optional: table column header for national price (default `Regular`) | No |
 
    Mark **`DISCORD_TOKEN`** as **secret** if Render offers that toggle.
 
@@ -65,7 +66,7 @@ Attach a **persistent disk** to the worker and set `STATE_DB_PATH` to a file on 
 3. Confirm **`monitor-noop`** and **`monitor-aaa-national-gas`** (and any other workers) exist under the guild or category.
 4. Run **`/testalert`** — embed should appear in `ALERT_CHANNEL_ID`. The embed and ephemeral reply include **git commit** (from `RENDER_GIT_COMMIT` on Render), **branch**, and **process start time** so you can confirm the running instance matches GitHub after deploy. Optional: set **`GITHUB_REPO=owner/repo`** for a “View commit on GitHub” link.
 5. Optional: **`/aaagaspoll`** (Manage Server or `BOT_OWNER_USER_ID`) sets the **AAA national gas** poll interval in SQLite (minutes); it applies after the current sleep cycle.
-6. **`/aaagas`** — shows the last **stored** national average price and as-of date from SQLite (same values the worker last saved; not a live HTTP fetch from Discord).
+6. **`/aaagas`** — shows the last **stored** national average and as-of date (not a live fetch). The AAA worker parses HTML **table-first** (column from `AAA_GAS_TABLE_GRADE`, default **Regular**), then falls back to map-badge selectors.
 7. **`/aaagasrefresh`** (Manage Server or `BOT_OWNER_USER_ID`) — **live** HTTP fetch to the configured AAA URL, step-by-step ephemeral status (URL, attempts, HTTP result, parse), then SQLite update. If the snapshot **changes** vs the database, sends the same **monitor channel embed** as the background worker; **first baseline** still stores only (no embed). Useful for debugging 403/parse issues without waiting for the scheduler.
 
 ## Updating the bot
@@ -93,6 +94,7 @@ Or revert the commit on GitHub and push again.
 | 403 / Missing Access | See [README.md](../README.md) section on `TEST_GUILD_ID` |
 | `429` / HTML from Cloudflare / “Error 1015” / “rate limited” on login | Discord’s edge (Cloudflare) sometimes limits **datacenter IPs** (e.g. Render’s outbound IP). **Not** a code bug. **Mitigations:** wait 15–60 minutes; avoid crash loops (fix env so the process is not restarting constantly); try another **Render region** to get a different IP; if it persists, try another host or region. OAuth redirect URIs (`localhost` vs `127.0.0.1`) do **not** affect token login from Render. |
 | Bot online locally but “offline” on Render | Wrong token in Render env, process crashed (check logs), or **same token** still used by a local `python main.py` (stop local). |
+| **`/aaagasrefresh` or worker logs: HTTP 403** to `gasprices.aaa.com` (diagnostics may show **Cloudflare** / `CF-Ray`) | The site often blocks **datacenter egress IPs** (Render, many VPS). Not fixable purely in code. **Mitigations:** set **`AAA_GAS_HTTP_USER_AGENT`** to the same string as desktop Chrome (DevTools → Network → request headers); try another **Render region** for a different outbound IP; use an HTTP **proxy** with a residential IP; or run the bot **locally** / on a host with a “clean” IP. |
 
 ## Related
 

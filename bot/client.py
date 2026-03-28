@@ -294,7 +294,10 @@ class MonitorBot(discord.Client):
                     )
                 )
 
-                parsed = parse_aaa_national_snapshot(html)
+                parsed = parse_aaa_national_snapshot(
+                    html,
+                    table_grade=self._settings.aaa_gas_table_grade,
+                )
                 if parsed is None:
                     await interaction.edit_original_response(
                         content=_cap_discord_text(

@@ -13,6 +13,7 @@ from workers.aaa_national_gas import (
     apply_aaa_snapshot,
     load_worker_state_dict,
     merge_poll_interval_into_stored_state,
+    parse_aaa_national_from_table,
     parse_aaa_national_snapshot,
 )
 
@@ -47,6 +48,8 @@ async def _run_apply_snapshot(
     return r, notified
 
 _FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "aaa_gas_sample.html")
+_FIXTURE_TABLE = os.path.join(os.path.dirname(__file__), "fixtures", "aaa_gas_table.html")
+_FIXTURE_MULTI_TABLE = os.path.join(os.path.dirname(__file__), "fixtures", "aaa_gas_multi_table.html")
 
 
 def test_parse_aaa_national_snapshot_happy_path() -> None:
@@ -54,6 +57,33 @@ def test_parse_aaa_national_snapshot_happy_path() -> None:
         html = f.read()
     out = parse_aaa_national_snapshot(html)
     assert out == ("3.976", "3/28/26")
+
+
+def test_parse_aaa_national_snapshot_table_fixture() -> None:
+    with open(_FIXTURE_TABLE, encoding="utf-8") as f:
+        html = f.read()
+    assert parse_aaa_national_snapshot(html) == ("3.978", "3/28/26")
+    price, as_of = parse_aaa_national_from_table(html, "Regular")
+    assert price == "3.978"
+    assert as_of == "3/28/26"
+
+
+def test_parse_aaa_national_snapshot_multi_table_skips_decoy() -> None:
+    with open(_FIXTURE_MULTI_TABLE, encoding="utf-8") as f:
+        html = f.read()
+    assert parse_aaa_national_snapshot(html) == ("4.001", "1/15/26")
+
+
+def test_parse_aaa_national_snapshot_table_grade_premium() -> None:
+    html = (
+        "<html><body><table>"
+        "<tr><th></th><th>Regular</th><th>Premium</th></tr>"
+        "<tr><td>x</td><td>$1</td><td>$5.99</td></tr>"
+        "</table>"
+        '<div id="maincontent"><p>Price as of 2/1/26</p></div>'
+        "</body></html>"
+    )
+    assert parse_aaa_national_snapshot(html, table_grade="Premium") == ("5.99", "2/1/26")
 
 
 def test_parse_aaa_national_snapshot_missing_markup() -> None:

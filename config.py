@@ -20,6 +20,7 @@ class Settings:
     aaa_gas_poll_interval_seconds: int = 300
     aaa_gas_page_url: str = "https://gasprices.aaa.com/"
     aaa_gas_http_user_agent: str | None = None
+    aaa_gas_table_grade: str = "Regular"
 
 
 def _get_required(name: str) -> str:
@@ -70,4 +71,5 @@ def load_settings() -> Settings:
             "https://gasprices.aaa.com/",
         ),
         aaa_gas_http_user_agent=_get_optional_user_agent("AAA_GAS_HTTP_USER_AGENT"),
+        aaa_gas_table_grade=_get_optional_str("AAA_GAS_TABLE_GRADE", "Regular"),
     )
