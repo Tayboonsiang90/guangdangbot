@@ -1,5 +1,5 @@
 ---
-description: Discord bot layer (discord.py)—intents, secrets, send_alert, no worker imports of discord
+description: Discord bot layer (discord.py)—intents, secrets, channels, embeds; workers never import discord
 globs:
   - bot/**/*.py
 alwaysApply: false
@@ -9,7 +9,7 @@ alwaysApply: false
 
 ## Scope
 
-- All Discord API usage lives here. Workers under `workers/` must **not** import `discord`; they only call an injected `send_alert` coroutine.
+- All Discord API usage lives here. Workers under `workers/` must **not** import `discord`; they call an injected **`notify`** with a payload `dict`. Channel creation and posting live in `bot/channel_setup.py` and `bot/client.py`.
 
 ## Library usage
 

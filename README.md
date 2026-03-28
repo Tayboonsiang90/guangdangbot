@@ -1,32 +1,42 @@
 # Discord monitor bot
 
-Python Discord bot that relays alert-style notifications to a channel.
+Python Discord bot that relays alert-style notifications to Discord channels, with **async polling workers** and **auto-created per-worker channels**.
+
+**Status:** Deployed on [Render](https://render.com) (Background Worker). Core stack: relayer, SQLite state, scheduler, registry, noop worker, `/testalert`, `/setupchannels`.
 
 ## What is implemented
 
-- Discord relayer (`discord.py`) with one configured alert channel.
-- Styled embed notifications (title, subtitle, link, metadata fields, timestamp).
-- Slash command **`/testalert`** — sends a sample embed to the alert channel.
-- [`render.yaml`](render.yaml) for Render, [`runtime.txt`](runtime.txt) for Python version on Render.
+- **Discord relayer** (`discord.py`) with styled embeds.
+- **`/testalert`** — sample embed to `ALERT_CHANNEL_ID` (testing).
+- **Workers** — [`workers/base.py`](workers/base.py), [`scheduler.py`](scheduler.py), [`workers/registry.py`](workers/registry.py); default **noop** worker.
+- **SQLite** — worker snapshot state + `worker_id` → channel mapping ([`state/store.py`](state/store.py)).
+- **Auto channels** — per-worker text channels in `MONITOR_GUILD_ID` (see [`bot/channel_setup.py`](bot/channel_setup.py)); **`/setupchannels`** to repair.
+- [`render.yaml`](render.yaml), [`runtime.txt`](runtime.txt).
 
 ## Project layout
 
 | File | Role |
 |------|------|
-| [`main.py`](main.py) | Entrypoint, logging, graceful shutdown (`async with bot`) |
+| [`main.py`](main.py) | `asyncio.gather` bot + scheduler |
 | [`config.py`](config.py) | Environment variables |
-| [`bot/client.py`](bot/client.py) | Bot client, embed builder, `/testalert` |
-| [`requirements.txt`](requirements.txt) | Dependencies |
-| [`docs/DEPLOYMENT_RENDER_GITHUB.md`](docs/DEPLOYMENT_RENDER_GITHUB.md) | **Hosting on Render (step-by-step)** |
+| [`bot/client.py`](bot/client.py) | Bot, embeds, slash commands |
+| [`bot/channel_setup.py`](bot/channel_setup.py) | Create/resolve worker channels |
+| [`scheduler.py`](scheduler.py) | Worker loops after `wait_until_ready` |
+| [`state/store.py`](state/store.py) | SQLite |
+| [`workers/registry.py`](workers/registry.py) | Register workers + `WORKER_IDS` |
+| [`docs/ADDING_WORKERS.md`](docs/ADDING_WORKERS.md) | **How to add a worker** |
+| [`docs/DEPLOYMENT_RENDER_GITHUB.md`](docs/DEPLOYMENT_RENDER_GITHUB.md) | Render hosting |
 
 ## Local setup
 
 1. Create a Discord application and bot in the [Developer Portal](https://discord.com/developers/applications).
-2. Invite the bot with scopes **`bot`** + **`applications.commands`** and permissions **Send Messages**, **Embed Links**.
-3. Copy [`.env.example`](.env.example) to `.env` and set:
+2. Invite the bot with **`bot`** + **`applications.commands`**. The bot needs **Manage Channels** in the server where monitors run (to create worker channels), plus **Send Messages** / **Embed Links**.
+3. Copy [`.env.example`](.env.example) to `.env` and set at least:
    - `DISCORD_TOKEN`
-   - `ALERT_CHANNEL_ID`
-   - Optional: `TEST_GUILD_ID`, `BOT_OWNER_USER_ID`
+   - `ALERT_CHANNEL_ID` (for `/testalert` and fallback alerts)
+   - `MONITOR_GUILD_ID` (server where `monitor-*` channels are created)
+   - `STATE_DB_PATH` (default `data/state.db` is fine locally)
+   - Optional: `MONITOR_CATEGORY_ID`, `TEST_GUILD_ID`, `BOT_OWNER_USER_ID`
 4. Install and run:
 
    ```bash
@@ -34,34 +44,22 @@ Python Discord bot that relays alert-style notifications to a channel.
    python main.py
    ```
 
-5. In Discord, run **`/testalert`** and confirm the embed in your alert channel.
+5. Run **`/testalert`** and/or **`/setupchannels`** in the server; confirm channels appear and embeds work.
 
-### Troubleshooting local / slash commands
+### Troubleshooting
 
-- **`403 Forbidden (50001): Missing Access`** when using `TEST_GUILD_ID`: wrong server ID, bot not in server, or invite missing `applications.commands`. See section below.
-- **`/testalert` slow to appear:** omit `TEST_GUILD_ID` and wait for global sync (up to ~1 hour), or set `TEST_GUILD_ID` to your server for instant guild sync.
-
-### Error: `403 Forbidden (50001): Missing Access` on startup
-
-If `TEST_GUILD_ID` is set but guild command sync fails: wrong guild ID, bot not in that server, or invite lacked **`applications.commands`**. Remove `TEST_GUILD_ID` to use global sync, or fix the invite. The bot falls back to global sync and logs a warning instead of crashing.
+- **`403 Forbidden (50001)`** with `TEST_GUILD_ID`: see older README notes; remove `TEST_GUILD_ID` or fix invite (`applications.commands`).
+- **Missing slash commands:** guild sync vs global sync (same as before).
 
 ## Host on Render
 
-Full checklist: **[docs/DEPLOYMENT_RENDER_GITHUB.md](docs/DEPLOYMENT_RENDER_GITHUB.md)**.
+See **[docs/DEPLOYMENT_RENDER_GITHUB.md](docs/DEPLOYMENT_RENDER_GITHUB.md)**. Set the same variables in the dashboard (including **`MONITOR_GUILD_ID`**). Use a **persistent disk** path for `STATE_DB_PATH` if you need SQLite to survive redeploys.
 
-Summary:
+**Do not** run the same bot token locally and on Render at once.
 
-1. Push this repo to GitHub.
-2. Render → **New** → **Background Worker** → connect repo, branch `main`.
-3. **Build:** `pip install -r requirements.txt` — **Start:** `python main.py`
-4. Add environment variables (**no** `.env` file on Render): `DISCORD_TOKEN`, `ALERT_CHANNEL_ID`, plus optional vars from `.env.example`.
-5. Deploy and check **Logs**, then test **`/testalert`** in Discord.
+## Adding sources
 
-Confirm your Render **plan** supports 24/7 workers if you need always-on uptime.
-
-## Next phase
-
-Add polling workers under `workers/` and call into the bot layer’s `send_alert` (to be wired when workers exist).
+Follow **[docs/ADDING_WORKERS.md](docs/ADDING_WORKERS.md)**.
 
 ## Cursor rules
 

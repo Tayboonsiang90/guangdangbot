@@ -4,10 +4,11 @@ globs:
   - config.py
   - main.py
   - scheduler.py
+  - state/**/*.py
 alwaysApply: false
 ---
 
-# Core Python (`config.py`, `main.py`, `scheduler.py`)
+# Core Python (`config.py`, `main.py`, `scheduler.py`, `state/`)
 
 ## Configuration
 

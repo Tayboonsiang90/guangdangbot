@@ -1,8 +1,12 @@
 import logging
 from datetime import datetime, timezone
+from typing import Any
 
 import discord
 from discord import app_commands
+
+from bot import channel_setup
+from state.store import StateStore
 
 
 LOGGER = logging.getLogger(__name__)
@@ -13,6 +17,10 @@ class MonitorBot(discord.Client):
         self,
         *,
         alert_channel_id: int,
+        state_store: StateStore,
+        monitor_guild_id: int,
+        monitor_category_id: int | None,
+        registered_worker_ids: list[str],
         test_guild_id: int | None = None,
         bot_owner_user_id: int | None = None,
     ) -> None:
@@ -22,6 +30,10 @@ class MonitorBot(discord.Client):
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
         self.alert_channel_id = alert_channel_id
+        self._store = state_store
+        self.monitor_guild_id = monitor_guild_id
+        self.monitor_category_id = monitor_category_id
+        self._registered_worker_ids = registered_worker_ids
         self.test_guild_id = test_guild_id
         self.bot_owner_user_id = bot_owner_user_id
 
@@ -38,8 +50,6 @@ class MonitorBot(discord.Client):
                     self.test_guild_id,
                 )
             except discord.Forbidden as exc:
-                # 50001 Missing Access: bot not in guild, wrong guild id, or invite lacked
-                # applications.commands scope.
                 LOGGER.warning(
                     "Guild slash-command sync failed for TEST_GUILD_ID=%s: %s. "
                     "Fix: invite the bot to that server with the applications.commands scope, "
@@ -58,7 +68,10 @@ class MonitorBot(discord.Client):
             LOGGER.info("Synced %s global slash commands", len(synced))
 
     def _register_commands(self) -> None:
-        @self.tree.command(name="testalert", description="Send a test monitor alert embed")
+        @self.tree.command(
+            name="testalert",
+            description="Send a test monitor alert embed to ALERT_CHANNEL_ID",
+        )
         async def testalert(interaction: discord.Interaction) -> None:
             if self.bot_owner_user_id and interaction.user.id != self.bot_owner_user_id:
                 await interaction.response.send_message(
@@ -78,6 +91,48 @@ class MonitorBot(discord.Client):
                 )
                 return
             await interaction.followup.send("Test alert sent.", ephemeral=True)
+
+        @self.tree.command(
+            name="setupchannels",
+            description="Ensure monitor channels exist for all registered workers",
+        )
+        async def setupchannels(interaction: discord.Interaction) -> None:
+            if interaction.guild is None:
+                await interaction.response.send_message(
+                    "Run this command inside the monitor server.",
+                    ephemeral=True,
+                )
+                return
+            if not await self._can_manage_monitor_setup(interaction):
+                await interaction.response.send_message(
+                    "You do not have permission to run this command.",
+                    ephemeral=True,
+                )
+                return
+            await interaction.response.defer(ephemeral=True, thinking=True)
+            try:
+                await channel_setup.ensure_worker_channels(
+                    self,
+                    self._store,
+                    guild_id=self.monitor_guild_id,
+                    category_id=self.monitor_category_id,
+                    worker_ids=self._registered_worker_ids,
+                )
+            except Exception as exc:
+                LOGGER.exception("setupchannels failed")
+                await interaction.followup.send(f"Setup failed: {exc}", ephemeral=True)
+                return
+            await interaction.followup.send(
+                "Monitor channels checked/created for all registered workers.",
+                ephemeral=True,
+            )
+
+    async def _can_manage_monitor_setup(self, interaction: discord.Interaction) -> bool:
+        if self.bot_owner_user_id and interaction.user.id == self.bot_owner_user_id:
+            return True
+        if interaction.guild and interaction.user.guild_permissions.manage_guild:
+            return True
+        return False
 
     async def on_ready(self) -> None:
         if self.user:
@@ -125,6 +180,50 @@ class MonitorBot(discord.Client):
         embed.add_field(name="Event ID", value=f"`{event_id}`", inline=False)
         embed.set_footer(text="Discord Monitor Bot")
         return embed
+
+    def build_notification_embed_from_payload(self, payload: dict[str, Any]) -> discord.Embed:
+        raw_time = payload["occurred_at"]
+        if isinstance(raw_time, datetime):
+            occurred_at = raw_time
+        else:
+            text = str(raw_time).replace("Z", "+00:00")
+            occurred_at = datetime.fromisoformat(text)
+            if occurred_at.tzinfo is None:
+                occurred_at = occurred_at.replace(tzinfo=timezone.utc)
+        return self.build_notification_embed(
+            title=str(payload["title"]),
+            subtitle=str(payload["subtitle"]),
+            link=str(payload["link"]),
+            mode=str(payload["mode"]),
+            event_index=str(payload["event_index"]),
+            source_name=str(payload["source_name"]),
+            event_id=str(payload["event_id"]),
+            occurred_at=occurred_at,
+        )
+
+    async def send_worker_notification(self, worker_id: str, payload: dict[str, Any]) -> None:
+        embed = self.build_notification_embed_from_payload(payload)
+        try:
+            cid = await channel_setup.resolve_or_create_worker_channel(
+                self,
+                self._store,
+                guild_id=self.monitor_guild_id,
+                category_id=self.monitor_category_id,
+                worker_id=worker_id,
+            )
+            channel = self.get_channel(cid)
+            if channel is None:
+                channel = await self.fetch_channel(cid)
+            if not isinstance(channel, discord.abc.Messageable):
+                raise RuntimeError(f"Channel {cid} is not messageable")
+            await channel.send(embed=embed)
+        except Exception as exc:
+            LOGGER.warning(
+                "Worker %s notify failed (%s); falling back to ALERT_CHANNEL_ID",
+                worker_id,
+                exc,
+            )
+            await self.send_alert(embed)
 
     async def send_test_alert(self) -> None:
         embed = self.build_notification_embed(

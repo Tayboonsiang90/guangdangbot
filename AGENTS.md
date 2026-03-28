@@ -2,29 +2,30 @@
 
 ## What this repo is
 
-A **Python** Discord bot (`discord.py`) that runs **one OS process** on **Render**: a Discord **relayer** is implemented now; **async polling workers** (gas, weather, APIs, etc.) will be added later. Workers must **not** import Discord APIs; they will call a single injected **`send_alert`** coroutine owned by the bot layer.
+A **Python** Discord bot (`discord.py`) that runs **one OS process** on **Render** (Background Worker). It includes a **relayer**, **SQLite** state, a **scheduler**, and pluggable **workers** under `workers/`. Workers **must not** import Discord APIs; they call an injected **`notify`** callback with a payload `dict`; the **bot** builds embeds and posts to **per-worker channels** (auto-created) or falls back to `ALERT_CHANNEL_ID`.
 
 ## Where to look
 
 | Topic | Document |
 |--------|-----------|
-| Architecture, worker contract, diagrams | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| Render + GitHub, env vars, rollback | [docs/DEPLOYMENT_RENDER_GITHUB.md](docs/DEPLOYMENT_RENDER_GITHUB.md) |
+| **Adding a new worker (checklist)** | [docs/ADDING_WORKERS.md](docs/ADDING_WORKERS.md) |
+| Architecture, diagrams | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Render + GitHub, env vars | [docs/DEPLOYMENT_RENDER_GITHUB.md](docs/DEPLOYMENT_RENDER_GITHUB.md) |
 | Cursor rules (scoped) | [.cursor/rules/](.cursor/rules/) |
 
 ## Rules for code changes
 
 - **Discord-only code** → `bot/`. **No** `discord` imports under `workers/`.
-- **Persistence** → `state/` (SQLite when implemented); follow [.cursor/rules/sqlite-state.mdc](.cursor/rules/sqlite-state.mdc).
-- **Scraping / HTTP polling** → `workers/`; prefer APIs over HTML; timeouts and backoff—see [.cursor/rules/scraping-workers.mdc](.cursor/rules/scraping-workers.mdc).
+- **Persistence** → `state/` ([`state/store.py`](state/store.py)); follow [.cursor/rules/sqlite-state.mdc](.cursor/rules/sqlite-state.mdc).
+- **Scraping / HTTP polling** → `workers/`; follow [.cursor/rules/scraping-workers.mdc](.cursor/rules/scraping-workers.mdc) and [docs/ADDING_WORKERS.md](docs/ADDING_WORKERS.md).
 - **Secrets** → environment variables only; never commit tokens.
+- **Register new workers** in [`workers/registry.py`](workers/registry.py) (`WORKER_IDS` + `build_workers`).
 
-## Adding a new alert source (future)
+## Adding a new alert source
 
-1. Add a new module under `workers/` implementing the shared worker pattern (fetch → compare to stored state → `send_alert` on change).
-2. Register it in the scheduler / main wiring (when those exist).
-3. Document any new env vars in `.env.example` and [docs/DEPLOYMENT_RENDER_GITHUB.md](docs/DEPLOYMENT_RENDER_GITHUB.md).
+1. Follow [docs/ADDING_WORKERS.md](docs/ADDING_WORKERS.md).
+2. Document new env vars in [`.env.example`](.env.example) and [docs/DEPLOYMENT_RENDER_GITHUB.md](docs/DEPLOYMENT_RENDER_GITHUB.md).
 
 ## Cursor
 
-Project rules live in `.cursor/rules/*.mdc` with **file globs** so only relevant files pull them into context. Optional: [Cursor Rules documentation](https://cursor.com/docs/rules).
+Project rules live in `.cursor/rules/*.mdc` with **file globs**. Optional: [Cursor Rules documentation](https://cursor.com/docs/rules).

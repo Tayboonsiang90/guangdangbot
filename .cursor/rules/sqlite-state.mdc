@@ -7,7 +7,7 @@ alwaysApply: false
 
 # SQLite state (`state/`)
 
-## When implementing `state/store.py`
+## `state/store.py`
 
 - Enable **WAL**: run `PRAGMA journal_mode=WAL;` after opening the connection (better concurrency and write performance for this workload).
 - With WAL, **`PRAGMA synchronous=NORMAL`** is a reasonable default for a single-worker bot (accept small risk on host power loss; not on clean app exit).
@@ -19,7 +19,7 @@ alwaysApply: false
 
 ## Deployment note
 
-- Render filesystem may be ephemeral unless you use persistent disk or external DB. Document `STATE_DB_PATH` (or equivalent) in `docs/DEPLOYMENT_RENDER_GITHUB.md` when wired up.
+- Render filesystem may be ephemeral unless you use persistent disk or external DB. Set `STATE_DB_PATH` and document it in `docs/DEPLOYMENT_RENDER_GITHUB.md`.
 
 ## References
 

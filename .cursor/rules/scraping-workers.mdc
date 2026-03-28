@@ -7,9 +7,11 @@ alwaysApply: false
 
 # Workers (`workers/`)
 
+**When adding a worker, follow [`docs/ADDING_WORKERS.md`](docs/ADDING_WORKERS.md) first.**
+
 ## Role
 
-- One module per external **source** (gas, weather, API poll, etc.). Each worker implements the shared worker contract (see `docs/ARCHITECTURE.md`): fetch → compare to persisted state → on change, call injected `send_alert` only—**no** `import discord` here.
+- One module per external **source** (gas, weather, API poll, etc.). Each worker subclasses `BaseWorker` in `workers/base.py`: fetch → compare to persisted state → on change, `await self._notify(payload_dict)`—**no** `import discord` here. Register in `workers/registry.py`.
 
 ## HTTP and HTML (v1 stack)
 
@@ -30,4 +32,5 @@ alwaysApply: false
 
 ## References
 
+- `docs/ADDING_WORKERS.md` — checklist and payload shape
 - `docs/ARCHITECTURE.md` — worker contract and scheduler notes

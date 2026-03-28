@@ -1,7 +1,8 @@
 # Render Blueprint: https://render.com/docs/blueprint-spec
 # Set secrets in the dashboard: Environment → Environment Variables
-#   DISCORD_TOKEN, ALERT_CHANNEL_ID (required)
-#   TEST_GUILD_ID, BOT_OWNER_USER_ID (optional)
+#   DISCORD_TOKEN, ALERT_CHANNEL_ID, MONITOR_GUILD_ID (required)
+#   STATE_DB_PATH (recommended: persistent disk path e.g. /data/state.db)
+#   MONITOR_CATEGORY_ID, TEST_GUILD_ID, BOT_OWNER_USER_ID (optional)
 
 services:
   - type: worker
