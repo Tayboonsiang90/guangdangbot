@@ -8,6 +8,7 @@ from discord import app_commands
 from bot import channel_setup
 from bot import deploy_info
 from state.store import StateStore
+from workers.aaa_national_gas import AAA_NATIONAL_GAS_WORKER_ID, merge_poll_interval_into_stored_state
 
 
 LOGGER = logging.getLogger(__name__)
@@ -134,6 +135,42 @@ class MonitorBot(discord.Client):
                 return
             await interaction.followup.send(
                 "Monitor channels checked/created for all registered workers.",
+                ephemeral=True,
+            )
+
+        @self.tree.command(
+            name="aaagaspoll",
+            description="Set poll interval for the AAA national gas worker (saved in SQLite)",
+        )
+        @app_commands.describe(
+            minutes="Minutes between checks (1–1440). Takes effect after the current sleep.",
+        )
+        async def aaagaspoll(
+            interaction: discord.Interaction,
+            minutes: app_commands.Range[int, 1, 1440],
+        ) -> None:
+            if interaction.guild is None:
+                await interaction.response.send_message(
+                    "Run this command inside the monitor server.",
+                    ephemeral=True,
+                )
+                return
+            if not await self._can_manage_monitor_setup(interaction):
+                await interaction.response.send_message(
+                    "You do not have permission to run this command.",
+                    ephemeral=True,
+                )
+                return
+            seconds = int(minutes) * 60
+            prev_sec, new_sec = merge_poll_interval_into_stored_state(self._store, seconds)
+            prev_part = (
+                f"{prev_sec // 60} min ({prev_sec}s)"
+                if prev_sec is not None
+                else "not set (env default until stored)"
+            )
+            await interaction.response.send_message(
+                f"Worker `{AAA_NATIONAL_GAS_WORKER_ID}` poll interval: "
+                f"{prev_part} → **{new_sec // 60} min** ({new_sec}s).",
                 ephemeral=True,
             )
 

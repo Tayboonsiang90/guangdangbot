@@ -26,6 +26,10 @@ class BaseWorker(ABC):
         self._store = store
         self._notify = notify
 
+    def get_interval_seconds(self) -> int:
+        """Sleep duration after each tick; override for dynamic intervals from persisted state."""
+        return self.interval_seconds
+
     @abstractmethod
     async def tick(self) -> None:
         """One poll cycle: fetch, compare to store, notify on change, persist."""

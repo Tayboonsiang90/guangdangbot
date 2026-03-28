@@ -16,6 +16,10 @@ class Settings:
     monitor_category_id: int | None = None
     test_guild_id: int | None = None
     bot_owner_user_id: int | None = None
+    # AAA national gas worker (optional; see .env.example)
+    aaa_gas_poll_interval_seconds: int = 300
+    aaa_gas_page_url: str = "https://gasprices.aaa.com/"
+    aaa_gas_http_user_agent: str | None = None
 
 
 def _get_required(name: str) -> str:
@@ -43,7 +47,13 @@ def _get_optional_str(name: str, default: str) -> str:
     return raw if raw else default
 
 
+def _get_optional_user_agent(name: str) -> str | None:
+    raw = os.getenv(name, "").strip()
+    return raw if raw else None
+
+
 def load_settings() -> Settings:
+    aaa_poll = _get_optional_int("AAA_GAS_POLL_INTERVAL_SECONDS")
     return Settings(
         discord_token=_get_required("DISCORD_TOKEN"),
         alert_channel_id=int(_get_required("ALERT_CHANNEL_ID")),
@@ -52,4 +62,12 @@ def load_settings() -> Settings:
         monitor_category_id=_get_optional_int("MONITOR_CATEGORY_ID"),
         test_guild_id=_get_optional_int("TEST_GUILD_ID"),
         bot_owner_user_id=_get_optional_int("BOT_OWNER_USER_ID"),
+        aaa_gas_poll_interval_seconds=(
+            aaa_poll if aaa_poll is not None else 300
+        ),
+        aaa_gas_page_url=_get_optional_str(
+            "AAA_GAS_PAGE_URL",
+            "https://gasprices.aaa.com/",
+        ),
+        aaa_gas_http_user_agent=_get_optional_user_agent("AAA_GAS_HTTP_USER_AGENT"),
     )

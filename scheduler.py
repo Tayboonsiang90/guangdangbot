@@ -12,6 +12,14 @@ from workers.base import BaseWorker
 
 LOGGER = logging.getLogger(__name__)
 
+# Match workers that persist poll_interval_seconds (e.g. AAA gas worker).
+_MIN_SLEEP_SECONDS = 60
+_MAX_SLEEP_SECONDS = 86400
+
+
+def _clamp_sleep_seconds(raw: int) -> int:
+    return max(_MIN_SLEEP_SECONDS, min(_MAX_SLEEP_SECONDS, raw))
+
 
 async def _worker_loop(worker: BaseWorker) -> None:
     while True:
@@ -19,7 +27,7 @@ async def _worker_loop(worker: BaseWorker) -> None:
             await worker.tick()
         except Exception:
             LOGGER.exception("Worker %s tick failed", worker.worker_id)
-        await asyncio.sleep(worker.interval_seconds)
+        await asyncio.sleep(_clamp_sleep_seconds(worker.get_interval_seconds()))
 
 
 async def run_scheduler(

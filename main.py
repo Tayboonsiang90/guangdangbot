@@ -28,7 +28,7 @@ async def async_main() -> None:
         test_guild_id=settings.test_guild_id,
         bot_owner_user_id=settings.bot_owner_user_id,
     )
-    workers = build_workers(store, bot)
+    workers = build_workers(store, bot, settings)
 
     async with bot:
         await asyncio.gather(

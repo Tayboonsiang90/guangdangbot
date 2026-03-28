@@ -37,7 +37,10 @@ Host the bot on [Render](https://render.com) as a **Background Worker** (long-ru
    | `STATE_DB_PATH` | SQLite path (e.g. `/data/state.db` on a Render persistent disk) | No |
    | `MONITOR_CATEGORY_ID` | Optional: category ID under which to create worker channels | No |
    | `TEST_GUILD_ID` | Optional: server ID for fast slash-command sync | No |
-   | `BOT_OWNER_USER_ID` | Optional: restrict `/testalert`; co-owns `/setupchannels` with Manage Server | No |
+   | `BOT_OWNER_USER_ID` | Optional: restrict `/testalert`; co-owns `/setupchannels` and `/aaagaspoll` with Manage Server | No |
+   | `AAA_GAS_POLL_INTERVAL_SECONDS` | Optional: default poll interval for the AAA national gas worker (seconds; clamped 60–86400; default 300) | No |
+   | `AAA_GAS_PAGE_URL` | Optional: URL scraped for national average (default `https://gasprices.aaa.com/`) | No |
+   | `AAA_GAS_HTTP_USER_AGENT` | Optional: override HTTP User-Agent for that worker | No |
 
    Mark **`DISCORD_TOKEN`** as **secret** if Render offers that toggle.
 
@@ -59,8 +62,9 @@ Attach a **persistent disk** to the worker and set `STATE_DB_PATH` to a file on 
 
 1. Open the service → **Logs**. You should see login lines (no traceback on startup).
 2. In Discord, run **`/setupchannels`** (in the monitor guild) or wait for the scheduler’s first ensure pass.
-3. Confirm **`monitor-noop`** (or your worker) channels exist under the guild or category.
+3. Confirm **`monitor-noop`** and **`monitor-aaa-national-gas`** (and any other workers) exist under the guild or category.
 4. Run **`/testalert`** — embed should appear in `ALERT_CHANNEL_ID`. The embed and ephemeral reply include **git commit** (from `RENDER_GIT_COMMIT` on Render), **branch**, and **process start time** so you can confirm the running instance matches GitHub after deploy. Optional: set **`GITHUB_REPO=owner/repo`** for a “View commit on GitHub” link.
+5. Optional: **`/aaagaspoll`** (Manage Server or `BOT_OWNER_USER_ID`) sets the **AAA national gas** poll interval in SQLite (minutes); it applies after the current sleep cycle.
 
 ## Updating the bot
 
