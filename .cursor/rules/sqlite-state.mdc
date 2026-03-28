@@ -1,0 +1,26 @@
+---
+description: SQLite state store—WAL, PRAGMAs, prepared statements, transactions
+globs:
+  - state/**/*.py
+alwaysApply: false
+---
+
+# SQLite state (`state/`)
+
+## When implementing `state/store.py`
+
+- Enable **WAL**: run `PRAGMA journal_mode=WAL;` after opening the connection (better concurrency and write performance for this workload).
+- With WAL, **`PRAGMA synchronous=NORMAL`** is a reasonable default for a single-worker bot (accept small risk on host power loss; not on clean app exit).
+- Enable **`PRAGMA foreign_keys=ON;`** if you define foreign keys.
+- Use **prepared statements** with bound parameters only—never concatenate user or worker-controlled strings into SQL.
+- Wrap multi-step writes in a **transaction** (`BEGIN` / `COMMIT` or context manager).
+- **Naming:** `snake_case` for tables and columns.
+- **Queries:** select only needed columns; avoid `SELECT *` in hot paths.
+
+## Deployment note
+
+- Render filesystem may be ephemeral unless you use persistent disk or external DB. Document `STATE_DB_PATH` (or equivalent) in `docs/DEPLOYMENT_RENDER_GITHUB.md` when wired up.
+
+## References
+
+- Architecture context: `docs/ARCHITECTURE.md`

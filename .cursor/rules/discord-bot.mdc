@@ -1,0 +1,34 @@
+---
+description: Discord bot layer (discord.py)—intents, secrets, send_alert, no worker imports of discord
+globs:
+  - bot/**/*.py
+alwaysApply: false
+---
+
+# Discord bot (`bot/`)
+
+## Scope
+
+- All Discord API usage lives here. Workers under `workers/` must **not** import `discord`; they only call an injected `send_alert` coroutine.
+
+## Library usage
+
+- Use `discord.py` high-level APIs for sending messages and channel operations. The library uses REST under the hood—do not bypass it with raw gateway sends for normal actions.
+- Be mindful of **rate limits** (`429`). Avoid tight loops of `channel.send`. Batch or space alerts when possible.
+
+## Intents
+
+- Request **minimal** intents: e.g. `Guilds` if you need guild/channel resolution; add `MessageContent` **only** if the bot reads message body text (privileged). Document chosen intents in `docs/ARCHITECTURE.md` or README when implemented.
+
+## Secrets
+
+- `DISCORD_TOKEN` and other secrets: **environment variables only**—never commit tokens or channel IDs that must stay private if you consider them sensitive (channel IDs are often committed; tokens never).
+
+## Lifecycle
+
+- When implementing: gate sending until the client is ready (`wait_until_ready()` or equivalent) so `get_channel` / alert delivery is reliable after restarts.
+
+## References
+
+- Canonical architecture: `docs/ARCHITECTURE.md`
+- Project overview: `AGENTS.md`

@@ -1,0 +1,33 @@
+---
+description: Pollers and parsers—httpx async, BeautifulSoup, timeouts, ethics, API-first
+globs:
+  - workers/**/*.py
+alwaysApply: false
+---
+
+# Workers (`workers/`)
+
+## Role
+
+- One module per external **source** (gas, weather, API poll, etc.). Each worker implements the shared worker contract (see `docs/ARCHITECTURE.md`): fetch → compare to persisted state → on change, call injected `send_alert` only—**no** `import discord` here.
+
+## HTTP and HTML (v1 stack)
+
+- Prefer **`httpx` AsyncClient** with explicit **timeouts** on every request.
+- Prefer **BeautifulSoup** + **lxml** for static HTML. Move to Playwright/Selenium only if content is JS-rendered and no stable API exists.
+- **API first:** if the source offers a documented API (e.g. weather.gov for some data), prefer it over brittle HTML selectors.
+
+## Robustness
+
+- **Retries** with exponential backoff on transient failures; do not tight-loop a failing URL.
+- Treat missing DOM nodes or unexpected shapes as **parse errors**—log clearly; do not send misleading alerts.
+- **Log** with context (worker name, URL, exception); avoid bare `print` in production paths.
+
+## Ethics and load
+
+- Respect **robots.txt** and site **terms of use**. Use a clear **User-Agent** identifying the bot.
+- Use **configurable intervals** per worker; add jitter if many sources run on one host.
+
+## References
+
+- `docs/ARCHITECTURE.md` — worker contract and scheduler notes

@@ -1,0 +1,32 @@
+---
+description: Entrypoint, config, scheduler—env config, logging, typing, asyncio glue
+globs:
+  - config.py
+  - main.py
+  - scheduler.py
+alwaysApply: false
+---
+
+# Core Python (`config.py`, `main.py`, `scheduler.py`)
+
+## Configuration
+
+- Read secrets and settings from **environment variables**. For local dev, `python-dotenv` may load a **gitignored** `.env`; never commit secrets.
+- Keep a committed **`.env.example`** with placeholder names and no real tokens (add when implementation starts).
+
+## Logging
+
+- Use the **`logging`** module with structured context (worker name, operation). Reserve `print` for quick local debugging only.
+
+## Typing and style
+
+- Use **type hints** on public functions and important helpers.
+- Keep modules focused: wiring in `main.py`, tick loops / `asyncio.gather` in `scheduler.py`, pure settings in `config.py`.
+
+## Concurrency (when implemented)
+
+- Single event loop: Discord client + worker loops. Start worker polling after the bot is **ready** so alerts can resolve channels. See `docs/ARCHITECTURE.md`.
+
+## Testing
+
+- Prefer **pytest** for pure logic (state, parsing helpers) when added; keep tests fast and offline where possible.
