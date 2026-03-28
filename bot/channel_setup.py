@@ -23,6 +23,22 @@ def sanitize_worker_channel_name(worker_id: str) -> str:
     return base[:_MAX_NAME]
 
 
+def _pick_reusable_text_channel(
+    guild: discord.Guild,
+    name: str,
+    category_id: int | None,
+) -> discord.TextChannel | None:
+    """If a text channel with this name already exists, reuse it (avoids duplicates after DB reset)."""
+    matches = [ch for ch in guild.text_channels if ch.name == name]
+    if not matches:
+        return None
+    if category_id is not None:
+        in_cat = [ch for ch in matches if ch.category_id == category_id]
+        if in_cat:
+            return min(in_cat, key=lambda c: c.id)
+    return min(matches, key=lambda c: c.id)
+
+
 async def resolve_or_create_worker_channel(
     client: discord.Client,
     store: StateStore,
@@ -70,6 +86,18 @@ async def resolve_or_create_worker_channel(
                     category = fetched
             except (discord.NotFound, discord.HTTPException) as exc:
                 LOGGER.warning("MONITOR_CATEGORY_ID %s not usable: %s", category_id, exc)
+
+    await guild.fetch_channels()
+    existing = _pick_reusable_text_channel(guild, name, category_id)
+    if existing is not None:
+        store.set_worker_channel_id(worker_id, existing.id)
+        LOGGER.info(
+            "Reusing existing channel %s (%s) for worker %s (no duplicate create)",
+            existing.name,
+            existing.id,
+            worker_id,
+        )
+        return existing.id
 
     channel = await guild.create_text_channel(name, category=category)
     store.set_worker_channel_id(worker_id, channel.id)

@@ -9,6 +9,19 @@ from datetime import datetime, timezone
 # When this process started (after deploy or local restart).
 PROCESS_STARTED_AT: datetime = datetime.now(timezone.utc)
 
+
+def discord_timestamp_markdown(dt: datetime, style: str = "F") -> str:
+    """Return Discord dynamic timestamp markup.
+
+    Renders in **each viewer's local timezone** (and locale) in the Discord client.
+    Styles: t T d D f F R — see https://discord.com/developers/docs/reference#message-formatting-formats
+
+    Common: F = long date/time, R = relative ("2 hours ago").
+    """
+    aware = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    ts = int(aware.timestamp())
+    return f"<t:{ts}:{style}>"
+
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 
@@ -73,12 +86,14 @@ def format_testalert_build_text() -> str:
     short = get_commit_short() or "unknown"
     branch = get_branch() or "unknown"
     env_label = "Render" if is_render_runtime() else "local"
-    started = PROCESS_STARTED_AT.strftime("%Y-%m-%d %H:%M UTC")
+    # Discord <t:...> shows in each user's local timezone; R adds relative hint.
+    started_abs = discord_timestamp_markdown(PROCESS_STARTED_AT, "F")
+    started_rel = discord_timestamp_markdown(PROCESS_STARTED_AT, "R")
     lines = [
         f"**Commit:** `{short}`",
         f"**Branch:** {branch}",
         f"**Runtime:** {env_label}",
-        f"**Process started:** {started}",
+        f"**Process started:** {started_abs} ({started_rel})",
     ]
     link = commit_compare_url()
     if link:

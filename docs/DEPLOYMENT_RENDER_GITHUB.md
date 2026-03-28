@@ -65,6 +65,7 @@ Attach a **persistent disk** to the worker and set `STATE_DB_PATH` to a file on 
 3. Confirm **`monitor-noop`** and **`monitor-aaa-national-gas`** (and any other workers) exist under the guild or category.
 4. Run **`/testalert`** — embed should appear in `ALERT_CHANNEL_ID`. The embed and ephemeral reply include **git commit** (from `RENDER_GIT_COMMIT` on Render), **branch**, and **process start time** so you can confirm the running instance matches GitHub after deploy. Optional: set **`GITHUB_REPO=owner/repo`** for a “View commit on GitHub” link.
 5. Optional: **`/aaagaspoll`** (Manage Server or `BOT_OWNER_USER_ID`) sets the **AAA national gas** poll interval in SQLite (minutes); it applies after the current sleep cycle.
+6. **`/aaagas`** — shows the last **stored** national average price and as-of date from SQLite (same values the worker last saved; not a live HTTP fetch from Discord).
 
 ## Updating the bot
 

@@ -8,7 +8,11 @@ from discord import app_commands
 from bot import channel_setup
 from bot import deploy_info
 from state.store import StateStore
-from workers.aaa_national_gas import AAA_NATIONAL_GAS_WORKER_ID, merge_poll_interval_into_stored_state
+from workers.aaa_national_gas import (
+    AAA_NATIONAL_GAS_WORKER_ID,
+    load_worker_state_dict,
+    merge_poll_interval_into_stored_state,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -95,10 +99,17 @@ class MonitorBot(discord.Client):
             short = deploy_info.get_commit_short() or "?"
             branch = deploy_info.get_branch() or "?"
             env_label = "Render" if deploy_info.is_render_runtime() else "local"
-            started = deploy_info.PROCESS_STARTED_AT.strftime("%Y-%m-%d %H:%M UTC")
+            started = deploy_info.discord_timestamp_markdown(
+                deploy_info.PROCESS_STARTED_AT, "F"
+            )
+            started_rel = deploy_info.discord_timestamp_markdown(
+                deploy_info.PROCESS_STARTED_AT, "R"
+            )
             await interaction.followup.send(
                 f"Test alert sent.\n"
-                f"**This process:** `{short}` · {branch} · {env_label} · started {started}\n"
+                f"**This process:** `{short}` · {branch} · {env_label}\n"
+                f"**Process started:** {started} ({started_rel})\n"
+                f"_Times use Discord dynamic timestamps — shown in your local timezone._\n"
                 f"_Match this commit to GitHub after deploy; if deploy is still running, wait and re-run._",
                 ephemeral=True,
             )
@@ -172,6 +183,40 @@ class MonitorBot(discord.Client):
                 f"Worker `{AAA_NATIONAL_GAS_WORKER_ID}` poll interval: "
                 f"{prev_part} → **{new_sec // 60} min** ({new_sec}s).",
                 ephemeral=True,
+            )
+
+        @self.tree.command(
+            name="aaagas",
+            description="Show last stored AAA national average price and as-of date",
+        )
+        async def aaagas(interaction: discord.Interaction) -> None:
+            if interaction.guild is None:
+                await interaction.response.send_message(
+                    "Run this command inside a server.",
+                    ephemeral=True,
+                )
+                return
+            raw = self._store.get_worker_payload(AAA_NATIONAL_GAS_WORKER_ID)
+            data = load_worker_state_dict(raw)
+            snap = data.get("snapshot") or {}
+            price = snap.get("price")
+            as_of = snap.get("as_of")
+            poll = data.get("settings", {}).get("poll_interval_seconds")
+            if price is None or as_of is None:
+                await interaction.response.send_message(
+                    "No AAA gas snapshot stored yet. Wait for the worker to finish a successful poll "
+                    "(or check logs if this never updates).",
+                    ephemeral=True,
+                )
+                return
+            poll_line = ""
+            if isinstance(poll, int) and poll > 0:
+                poll_line = f"\n**Poll interval:** {poll // 60} min ({poll}s)"
+            await interaction.response.send_message(
+                f"**AAA national average (last stored):** `${price}`\n"
+                f"**Price as of:** {as_of}"
+                f"{poll_line}\n"
+                f"_From the last successful scrape in this bot, not a live page fetch._",
             )
 
     async def _can_manage_monitor_setup(self, interaction: discord.Interaction) -> bool:
