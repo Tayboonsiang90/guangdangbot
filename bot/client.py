@@ -18,6 +18,14 @@ from workers.aaa_national_gas import (
     page_url_from_settings,
     parse_aaa_national_snapshot,
 )
+from workers.bonbast_rates import (
+    BONBAST_WORKER_ID,
+    apply_bonbast_snapshot,
+    fetch_bonbast_live,
+    load_bonbast_worker_state_dict,
+    merge_bonbast_poll_interval_into_stored_state,
+    public_page_url,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -344,6 +352,176 @@ class MonitorBot(discord.Client):
                 try:
                     await interaction.edit_original_response(
                         content=_cap_discord_text(f"**AAA live fetch error:** `{exc}`")
+                    )
+                except discord.HTTPException:
+                    await interaction.followup.send(
+                        f"Could not update message: {exc}",
+                        ephemeral=True,
+                    )
+
+        @self.tree.command(
+            name="bonbastpoll",
+            description="Set poll interval for the Bonbast worker (saved in SQLite)",
+        )
+        @app_commands.describe(
+            minutes="Minutes between checks (1–1440). Takes effect after the current sleep.",
+        )
+        async def bonbastpoll(
+            interaction: discord.Interaction,
+            minutes: app_commands.Range[int, 1, 1440],
+        ) -> None:
+            if interaction.guild is None:
+                await interaction.response.send_message(
+                    "Run this command inside the monitor server.",
+                    ephemeral=True,
+                )
+                return
+            if not await self._can_manage_monitor_setup(interaction):
+                await interaction.response.send_message(
+                    "You do not have permission to run this command.",
+                    ephemeral=True,
+                )
+                return
+            seconds = int(minutes) * 60
+            prev_sec, new_sec = merge_bonbast_poll_interval_into_stored_state(self._store, seconds)
+            prev_part = (
+                f"{prev_sec // 60} min ({prev_sec}s)"
+                if prev_sec is not None
+                else "not set (env default until stored)"
+            )
+            await interaction.response.send_message(
+                f"Worker `{BONBAST_WORKER_ID}` poll interval: "
+                f"{prev_part} → **{new_sec // 60} min** ({new_sec}s).",
+                ephemeral=True,
+            )
+
+        @self.tree.command(
+            name="bonbast",
+            description="Show last stored Bonbast sell/buy (IRR) for the configured currency",
+        )
+        async def bonbast(interaction: discord.Interaction) -> None:
+            if interaction.guild is None:
+                await interaction.response.send_message(
+                    "Run this command inside a server.",
+                    ephemeral=True,
+                )
+                return
+            raw = self._store.get_worker_payload(BONBAST_WORKER_ID)
+            data = load_bonbast_worker_state_dict(raw)
+            snap = data.get("snapshot") or {}
+            sell = snap.get("sell")
+            buy = snap.get("buy")
+            poll = data.get("settings", {}).get("poll_interval_seconds")
+            if sell is None or buy is None:
+                await interaction.response.send_message(
+                    "No Bonbast snapshot stored yet. Wait for the worker to finish a successful poll "
+                    "(or check logs if this never updates).",
+                    ephemeral=True,
+                )
+                return
+            poll_line = ""
+            if isinstance(poll, int) and poll > 0:
+                poll_line = f"\n**Poll interval:** {poll // 60} min ({poll}s)"
+            cc = self._settings.bonbast_currency_code.strip().upper() or "USD"
+            await interaction.response.send_message(
+                f"**Bonbast {cc} (last stored)**\n"
+                f"**Sell:** {sell:,}\n"
+                f"**Buy:** {buy:,}"
+                f"{poll_line}\n"
+                f"_From the last successful fetch in this bot, not a live request._",
+            )
+
+        @self.tree.command(
+            name="bonbastrefresh",
+            description="Live-fetch Bonbast token+json rates, update SQLite, show diagnostics (Manage Server)",
+        )
+        async def bonbastrefresh(interaction: discord.Interaction) -> None:
+            if interaction.guild is None:
+                await interaction.response.send_message(
+                    "Run this command inside the monitor server.",
+                    ephemeral=True,
+                )
+                return
+            if not await self._can_manage_monitor_setup(interaction):
+                await interaction.response.send_message(
+                    "You do not have permission to run this command.",
+                    ephemeral=True,
+                )
+                return
+
+            await interaction.response.defer(ephemeral=True, thinking=True)
+
+            start_url = public_page_url(self._settings)
+            try:
+                await interaction.edit_original_response(
+                    content=_cap_discord_text(
+                        "**Bonbast live fetch**\n"
+                        "Connecting…\n"
+                        f"`{start_url}`"
+                    )
+                )
+
+                rates, fetch_diags = await fetch_bonbast_live(self._settings)
+                await interaction.edit_original_response(
+                    content=_cap_discord_text(
+                        "**Bonbast live fetch — HTTP complete**\n"
+                        + _format_diag_lines(fetch_diags)
+                    )
+                )
+
+                if rates is None:
+                    await interaction.edit_original_response(
+                        content=_cap_discord_text(
+                            "**Bonbast live fetch failed**\n"
+                            "No rates returned after retries.\n\n"
+                            + _format_diag_lines(fetch_diags)
+                        )
+                    )
+                    return
+
+                sell, buy = rates
+
+                await interaction.edit_original_response(
+                    content=_cap_discord_text(
+                        "**Bonbast live fetch — parsing**\n"
+                        f"**Sell:** {sell:,} · **Buy:** {buy:,}\n"
+                        "Applying to SQLite…"
+                    )
+                )
+
+                async def notify_fn(payload: dict[str, Any]) -> None:
+                    await self.send_worker_notification(BONBAST_WORKER_ID, payload)
+
+                result = await apply_bonbast_snapshot(
+                    self._store,
+                    notify_fn,
+                    settings=self._settings,
+                    sell=sell,
+                    buy=buy,
+                )
+                outcome = str(result.get("outcome", "?"))
+                alert_sent = bool(result.get("alert_sent"))
+
+                diag_tail = fetch_diags[-8:] if len(fetch_diags) > 8 else fetch_diags
+                cc = self._settings.bonbast_currency_code.strip().upper() or "USD"
+                final = (
+                    "**Bonbast live fetch — done**\n"
+                    f"**{cc}** — **Sell:** {sell:,} · **Buy:** {buy:,}\n"
+                    f"**SQLite outcome:** `{outcome}` "
+                    "(baseline = first store only; unchanged = same as DB; changed = updated)\n"
+                    f"**Monitor channel alert sent:** **{'yes' if alert_sent else 'no'}**\n"
+                    "\n**Fetch diagnostics:**\n"
+                    + _format_diag_lines(diag_tail)
+                )
+                await interaction.edit_original_response(content=_cap_discord_text(final))
+            except discord.HTTPException:
+                LOGGER.exception("bonbastrefresh Discord HTTP error")
+                raise
+            except Exception as exc:
+                LOGGER.exception("bonbastrefresh failed")
+                try:
+                    await interaction.edit_original_response(
+                        content=_cap_discord_text(f"**Bonbast live fetch error:** `{exc}`")
                     )
                 except discord.HTTPException:
                     await interaction.followup.send(

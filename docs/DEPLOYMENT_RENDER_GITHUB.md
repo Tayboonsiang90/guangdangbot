@@ -37,11 +37,15 @@ Host the bot on [Render](https://render.com) as a **Background Worker** (long-ru
    | `STATE_DB_PATH` | SQLite path (e.g. `/data/state.db` on a Render persistent disk) | No |
    | `MONITOR_CATEGORY_ID` | Optional: category ID under which to create worker channels | No |
    | `TEST_GUILD_ID` | Optional: server ID for fast slash-command sync | No |
-   | `BOT_OWNER_USER_ID` | Optional: restrict `/testalert`; co-owns `/setupchannels`, `/aaagaspoll`, and `/aaagasrefresh` with Manage Server | No |
+   | `BOT_OWNER_USER_ID` | Optional: restrict `/testalert`; co-owns `/setupchannels`, poll/refresh commands (`/aaagaspoll`, `/aaagasrefresh`, `/bonbastpoll`, `/bonbastrefresh`) with Manage Server | No |
    | `AAA_GAS_POLL_INTERVAL_SECONDS` | Optional: default poll interval for the AAA national gas worker (seconds; clamped 60–86400; default 300) | No |
    | `AAA_GAS_PAGE_URL` | Optional: URL scraped for national average (default `https://gasprices.aaa.com/`) | No |
    | `AAA_GAS_HTTP_USER_AGENT` | Optional: override HTTP User-Agent for that worker | No |
    | `AAA_GAS_TABLE_GRADE` | Optional: table column header for national price (default `Regular`) | No |
+   | `BONBAST_POLL_INTERVAL_SECONDS` | Optional: default poll interval for the Bonbast worker (seconds; clamped 60–86400; default 300) | No |
+   | `BONBAST_BASE_URL` | Optional: site origin (default `https://bonbast.com`) | No |
+   | `BONBAST_HTTP_USER_AGENT` | Optional: override User-Agent for Bonbast HTTP | No |
+   | `BONBAST_CURRENCY_CODE` | Optional: currency code for `/json` keys (default `usd`) | No |
 
    Mark **`DISCORD_TOKEN`** as **secret** if Render offers that toggle.
 
@@ -63,11 +67,14 @@ Attach a **persistent disk** to the worker and set `STATE_DB_PATH` to a file on 
 
 1. Open the service → **Logs**. You should see login lines (no traceback on startup).
 2. In Discord, run **`/setupchannels`** (in the monitor guild) or wait for the scheduler’s first ensure pass.
-3. Confirm **`monitor-noop`** and **`monitor-aaa-national-gas`** (and any other workers) exist under the guild or category.
+3. Confirm **`monitor-noop`**, **`monitor-aaa-national-gas`**, **`monitor-bonbast-usd`** (and any other workers) exist under the guild or category.
 4. Run **`/testalert`** — embed should appear in `ALERT_CHANNEL_ID`. The embed and ephemeral reply include **git commit** (from `RENDER_GIT_COMMIT` on Render), **branch**, and **process start time** so you can confirm the running instance matches GitHub after deploy. Optional: set **`GITHUB_REPO=owner/repo`** for a “View commit on GitHub” link.
 5. Optional: **`/aaagaspoll`** (Manage Server or `BOT_OWNER_USER_ID`) sets the **AAA national gas** poll interval in SQLite (minutes); it applies after the current sleep cycle.
 6. **`/aaagas`** — shows the last **stored** national average and as-of date (not a live fetch). The AAA worker parses HTML **table-first** (column from `AAA_GAS_TABLE_GRADE`, default **Regular**), then falls back to map-badge selectors.
 7. **`/aaagasrefresh`** (Manage Server or `BOT_OWNER_USER_ID`) — **live** HTTP fetch to the configured AAA URL, step-by-step ephemeral status (URL, attempts, HTTP result, parse), then SQLite update. If the snapshot **changes** vs the database, sends the same **monitor channel embed** as the background worker; **first baseline** still stores only (no embed). Useful for debugging 403/parse issues without waiting for the scheduler.
+8. Optional: **`/bonbastpoll`** — set **Bonbast** worker poll interval in SQLite (minutes), same permission model as `/aaagaspoll`.
+9. **`/bonbast`** — last **stored** Bonbast sell/buy (IRR) for the configured currency (not a live fetch).
+10. **`/bonbastrefresh`** — live token + `/json` fetch, diagnostics, SQLite update; same baseline/changed behavior as `/aaagasrefresh`.
 
 ## Updating the bot
 

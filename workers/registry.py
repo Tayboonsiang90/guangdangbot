@@ -7,12 +7,14 @@ from config import Settings
 from state.store import StateStore
 from workers.aaa_national_gas import AaaNationalGasWorker
 from workers.base import BaseWorker
+from workers.bonbast_rates import BonbastWorker
 from workers.noop import NoopWorker
 
 # IDs must match worker instances below (used for Discord channels: monitor-<id>).
 WORKER_IDS: tuple[str, ...] = (
     "noop",
     "aaa-national-gas",
+    "bonbast-usd",
 )
 
 
@@ -33,6 +35,11 @@ def build_workers(store: StateStore, bot: MonitorBot, settings: Settings) -> lis
         AaaNationalGasWorker(
             store=store,
             notify=notify_for("aaa-national-gas"),
+            settings=settings,
+        ),
+        BonbastWorker(
+            store=store,
+            notify=notify_for("bonbast-usd"),
             settings=settings,
         ),
     ]

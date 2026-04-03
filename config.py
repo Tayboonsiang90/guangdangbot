@@ -21,6 +21,11 @@ class Settings:
     aaa_gas_page_url: str = "https://gasprices.aaa.com/"
     aaa_gas_http_user_agent: str | None = None
     aaa_gas_table_grade: str = "Regular"
+    # Bonbast live rates worker (optional; see .env.example)
+    bonbast_poll_interval_seconds: int = 300
+    bonbast_base_url: str = "https://bonbast.com"
+    bonbast_http_user_agent: str | None = None
+    bonbast_currency_code: str = "usd"
 
 
 def _get_required(name: str) -> str:
@@ -55,6 +60,7 @@ def _get_optional_user_agent(name: str) -> str | None:
 
 def load_settings() -> Settings:
     aaa_poll = _get_optional_int("AAA_GAS_POLL_INTERVAL_SECONDS")
+    bonbast_poll = _get_optional_int("BONBAST_POLL_INTERVAL_SECONDS")
     return Settings(
         discord_token=_get_required("DISCORD_TOKEN"),
         alert_channel_id=int(_get_required("ALERT_CHANNEL_ID")),
@@ -72,4 +78,10 @@ def load_settings() -> Settings:
         ),
         aaa_gas_http_user_agent=_get_optional_user_agent("AAA_GAS_HTTP_USER_AGENT"),
         aaa_gas_table_grade=_get_optional_str("AAA_GAS_TABLE_GRADE", "Regular"),
+        bonbast_poll_interval_seconds=(
+            bonbast_poll if bonbast_poll is not None else 300
+        ),
+        bonbast_base_url=_get_optional_str("BONBAST_BASE_URL", "https://bonbast.com"),
+        bonbast_http_user_agent=_get_optional_user_agent("BONBAST_HTTP_USER_AGENT"),
+        bonbast_currency_code=_get_optional_str("BONBAST_CURRENCY_CODE", "usd"),
     )
